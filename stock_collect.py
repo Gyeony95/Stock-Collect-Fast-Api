@@ -4,6 +4,11 @@ import dart_fss as dart
 import datetime
 import logging
 from contextlib import asynccontextmanager
+import os
+from dotenv import load_dotenv
+
+# .env 파일 로드
+load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,8 +26,10 @@ app = FastAPI(lifespan=lifespan)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# DART API 키 설정 (나중에 입력)
-DART_API_KEY = "YOUR_API_KEY_HERE"
+# DART API 키 설정
+DART_API_KEY = os.getenv('DART_API_KEY')
+if not DART_API_KEY:
+    raise ValueError("DART_API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.")
 
 # 관심 있는 종목 코드 리스트
 STOCK_CODES = [
