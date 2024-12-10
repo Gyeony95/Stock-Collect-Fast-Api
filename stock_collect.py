@@ -2,47 +2,29 @@ from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
-from apscheduler.schedulers.background import BackgroundScheduler
 import dart_fss as dart
 import datetime
 import logging
-from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.middleware.sessions import SessionMiddleware
-from models import SessionLocal, StockData, FinancialData
+from models import SessionLocal, StockData, FinancialData, ManagedStock
 from datetime import datetime, timedelta
 from sqlalchemy.sql import text
+from fastapi.background import BackgroundTasks
 
 # .env 파일 로드
 load_dotenv()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 시작 시
-    scheduler.start()
-    logger.info("스케줄러 시작됨")
-    yield
-    # 종료 시
-    scheduler.shutdown()
-    logger.info("스케줄러 종료됨")
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 # 템플릿과 정적 파일 설정
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# 비밀번호 설정
+# 비번호 설정
 PASSWORD = os.getenv('ADMIN_PASSWORD')
-
-# 종목 관리를 위한 전역 변수
-STOCK_CODES = {
-    "005930": "삼성전자",
-    "000660": "SK하이닉스",
-    "035720": "카카오",
-}
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -65,13 +47,26 @@ async def login_page(request: Request):
     """로그인 페이지"""
     return templates.TemplateResponse("login.html", {"request": request})
 
+def get_managed_stocks(db):
+    stocks = db.query(ManagedStock).filter(ManagedStock.is_active == True).all()
+    return {stock.stock_code: stock.company_name for stock in stocks}
+
 @app.get("/manage")
 async def manage_page(request: Request, _=Depends(verify_login)):
     """종목 관리 페이지"""
-    return templates.TemplateResponse(
-        "manage.html", 
-        {"request": request, "stocks": STOCK_CODES}
-    )
+    db = SessionLocal()
+    try:
+        # 활성화된 종목만 조회
+        stocks = db.query(ManagedStock)\
+            .filter(ManagedStock.is_active == True)\
+            .all()
+        stocks_dict = {stock.stock_code: stock.company_name for stock in stocks}
+        return templates.TemplateResponse(
+            "manage.html", 
+            {"request": request, "stocks": stocks_dict}
+        )
+    finally:
+        db.close()
 
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
@@ -84,31 +79,75 @@ async def login(request: Request, password: str = Form(...)):
 @app.post("/add-stock")
 async def add_stock(stock_name: str = Form(...)):
     """종목 추가"""
+    db = SessionLocal()
     try:
         # dart-fss로 종목 검색
         corps = dart.get_corp_list().find_by_corp_name(stock_name, exactly=False)
-        if corps:
-            corp = corps[0]  # 첫 번째 검색 결과 사용
-            STOCK_CODES[corp.stock_code] = corp.corp_name
-            return {"success": True, "code": corp.stock_code, "name": corp.corp_name}
-        return {"success": False, "error": "종목을 찾을 수 없습니다"}
+        if not corps:
+            return {"success": False, "error": "종목을 찾을 수 없습니다"}
+
+        corp = corps[0]  # 첫 번째 검색 결과 사용
+        
+        # 이미 등록된 종목인지 확인
+        existing_stock = db.query(ManagedStock)\
+            .filter(ManagedStock.stock_code == corp.stock_code)\
+            .first()
+        
+        if existing_stock:
+            if existing_stock.is_active:
+                return {"success": False, "error": "이미 등록된 종목입니다"}
+            # 비활성화된 종목이면 다시 활성화
+            existing_stock.is_active = True
+            existing_stock.updated_at = datetime.now()
+            db.commit()
+        else:
+            # 새 종목 추가
+            new_stock = ManagedStock(
+                stock_code=corp.stock_code,
+                company_name=corp.corp_name,
+                is_active=True,
+                created_at=datetime.now(),
+                updated_at=datetime.now()
+            )
+            db.add(new_stock)
+            db.commit()
+        
+        return {"success": True, "code": corp.stock_code, "name": corp.corp_name}
     except Exception as e:
+        db.rollback()
+        logger.error(f"종목 추가 중 오류 발생: {str(e)}")
         return {"success": False, "error": str(e)}
+    finally:
+        db.close()
 
 @app.post("/remove-stock/{stock_code}")
 async def remove_stock(stock_code: str):
     """종목 제거"""
+    db = SessionLocal()
     try:
-        if stock_code in STOCK_CODES:
-            company_name = STOCK_CODES[stock_code]  # 로깅을 위해 회사명 저장
-            del STOCK_CODES[stock_code]
-            logger.info(f"종목 제거됨: {company_name} ({stock_code})")
-            return {"success": True}
-        logger.warning(f"존재하지 않는 종목 코드: {stock_code}")
-        return {"success": False, "error": "존재하지 않는 종목 코드입니다"}
+        stock = db.query(ManagedStock)\
+            .filter(ManagedStock.stock_code == stock_code)\
+            .first()
+        
+        if not stock:
+            return {"success": False, "error": "존재하지 않는 종목 코드입니다"}
+        
+        if not stock.is_active:
+            return {"success": False, "error": "이미 제거된 종목입니다"}
+        
+        # 종목 비활성화
+        stock.is_active = False
+        stock.updated_at = datetime.now()
+        db.commit()
+        
+        logger.info(f"종목 제거됨: {stock.company_name} ({stock_code})")
+        return {"success": True}
     except Exception as e:
+        db.rollback()
         logger.error(f"종목 제거 중 오류 발생: {str(e)}")
         return {"success": False, "error": str(e)}
+    finally:
+        db.close()
 
 def collect_dart_data():
     """DART에서 데이터를 수집하는 함수"""
@@ -175,10 +214,6 @@ def collect_dart_data():
     except Exception as e:
         logger.error(f"데이터 수집 중 오류 발생: {str(e)}")
 
-# 스케줄러 설정
-scheduler = BackgroundScheduler()
-scheduler.add_job(collect_dart_data, 'cron', hour=9, minute=0)  # 매일 오전 9시에 실행
-
 @app.get("/")
 async def root():
     """서버 상태 확인용 엔드포인트"""
@@ -193,17 +228,6 @@ async def run_collection():
     except Exception as e:
         logger.error(f"데이터 수집 실행 중 오류: {str(e)}")
         return {"status": "error", "message": str(e)}
-
-# 서버 시작 시 데이터 수집 실행
-@app.on_event("startup")
-async def startup_event():
-    """서버 시작 시 실행"""
-    try:
-        collect_dart_data()  # 초기 데이터 수집
-        scheduler.start()
-        logger.info("스케줄러 시작됨")
-    except Exception as e:
-        logger.error(f"시작 시 데이터 수집 중 오류: {str(e)}")
 
 @app.get("/logout")
 async def logout(request: Request):
@@ -220,7 +244,7 @@ def collect_single_stock_data(stock_code: str, company_name: str):
         try:
             company = corp_list.find_by_stock_code(stock_code)
             if not company:
-                raise ValueError(f"종목코드 {stock_code}에 해당하는 기업을 찾을 수 없습니다.")
+                raise ValueError(f"종목코드 {stock_code} 해당하는 기업을 찾을 수 없습니다.")
             
             # 공시 정보 수집 (최근 1년)
             bgn_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
@@ -246,18 +270,19 @@ def collect_single_stock_data(stock_code: str, company_name: str):
             
             # 재무제표 데이터 수집
             try:
+                # 연결재무제표 시도
                 fs = company.extract_fs(bgn_de=(datetime.now() - timedelta(days=365*3)).strftime('%Y%m%d'))
-                if fs is not None:
-                    # 연결재무제표 시도
-                    try:
-                        statements = fs.show('연결재무제표')
-                    except:
-                        try:
-                            statements = fs.show('재무제표')
-                        except:
-                            statements = None
-                            logger.warning(f"{company_name}({stock_code}) 재무제표를 찾을 수 없습니다")
-                    
+            except dart_fss.errors.NotFoundConsolidated:
+                try:
+                    # 일반재무제표 시도
+                    fs = company.extract_fs(bgn_de=(datetime.now() - timedelta(days=365*3)).strftime('%Y%m%d'), separate=True)
+                except Exception as e:
+                    logger.warning(f"{company_name}({stock_code}) 일반재무제표 수집 중 오류: {str(e)}")
+                    fs = None
+
+            if fs is not None:
+                try:
+                    statements = fs.show('재무상태표')  # 또는 다른 적절한 보고서 이름
                     if statements is not None:
                         for idx, row in statements.iterrows():
                             try:
@@ -274,8 +299,8 @@ def collect_single_stock_data(stock_code: str, company_name: str):
                             except (ValueError, TypeError) as e:
                                 logger.warning(f"재무데이터 처리 중 오류: {str(e)}")
                                 continue
-            except Exception as e:
-                logger.warning(f"{company_name}({stock_code}) 재무제표 수집 중 오류: {str(e)}")
+                except Exception as e:
+                    logger.warning(f"{company_name}({stock_code}) 재무제표 데이터 처리 중 오류: {str(e)}")
             
             db.commit()
             logger.info(f"{company_name}({stock_code}) 데이터 수집 완료")
@@ -287,8 +312,16 @@ def collect_single_stock_data(stock_code: str, company_name: str):
         logger.error(f"{company_name}({stock_code}) 데이터 수집 중 오류 발생: {str(e)}")
         raise e
 
+# 전역 변수로 수집 상태 관리
+collection_status = {"status": "idle", "message": ""}
+
+@app.get("/collection-status")
+async def get_collection_status():
+    """데이터 수집 상태 확인"""
+    return collection_status
+
 @app.get("/stock/{stock_code}")
-async def stock_detail(request: Request, stock_code: str, _=Depends(verify_login)):
+async def stock_detail(request: Request, stock_code: str, background_tasks: BackgroundTasks, _=Depends(verify_login)):
     """종목 상세 정보 페이지"""
     try:
         if stock_code not in STOCK_CODES:
@@ -296,6 +329,7 @@ async def stock_detail(request: Request, stock_code: str, _=Depends(verify_login
             
         company_name = STOCK_CODES[stock_code]
         db = SessionLocal()
+        collecting = False
         
         try:
             # 데이터 존재 여부 확인
@@ -303,11 +337,14 @@ async def stock_detail(request: Request, stock_code: str, _=Depends(verify_login
                 FinancialData.stock_code == stock_code
             ).first()
             
-            # 데이터가 없으면 수집
+            # 데이터가 없으면 수집 시작
             if not data_exists:
-                logger.info(f"{company_name}({stock_code}) 데이터 없음, 수집 시작")
-                collect_single_stock_data(stock_code, company_name)
-            
+                collecting = True
+                collection_status["status"] = "collecting"
+                collection_status["message"] = f"{company_name} 데이터를 수집하고 있습니다..."
+                # 백그라운드에서 데이터 수집 실행
+                background_tasks.add_task(collect_single_stock_data, stock_code, company_name)
+
             # 최근 3개년 재무데이터 조회
             yearly_query = text("""
                 SELECT date_trunc('year', date) as year,
@@ -380,7 +417,7 @@ async def stock_detail(request: Request, stock_code: str, _=Depends(verify_login
                         'x': ['매출액', '영업이익', '순이익'],
                         'y': [quarter_data[0].revenue, quarter_data[0].operating_profit, quarter_data[0].net_income],
                         'type': 'bar',
-                        'name': '전년 동기'
+                        'name': '전년 ��기'
                     }
                 ]
             else:
@@ -394,7 +431,8 @@ async def stock_detail(request: Request, stock_code: str, _=Depends(verify_login
                     "stock_code": stock_code,
                     "yearly_data": {"data": yearly_traces},
                     "quarter_data": {"data": quarter_traces},
-                    "disclosures": disclosures
+                    "disclosures": disclosures,
+                    "collecting": collecting
                 }
             )
             
@@ -402,6 +440,7 @@ async def stock_detail(request: Request, stock_code: str, _=Depends(verify_login
             db.close()
             
     except Exception as e:
+        collection_status["status"] = "idle"  # 오류 발생 시 상태 초기화
         logger.error(f"종목 상세정보 조회 중 오류 발생: {str(e)}")
         raise HTTPException(status_code=500, detail="서버 오류가 발생했습니다")
 

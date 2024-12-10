@@ -4,8 +4,8 @@ venv:
 	python3 -m venv venv
 
 install:
-	pip install fastapi uvicorn dart-fss apscheduler python-dotenv jinja2 python-multipart itsdangerous \
-		sqlalchemy psycopg2-binary pandas plotly
+	pip install fastapi uvicorn dart-fss python-dotenv jinja2 python-multipart itsdangerous \
+		sqlalchemy psycopg2-binary pandas plotly pymysql cryptography
 	@if [ "$(shell uname)" = "Darwin" ]; then \
 		brew install tmux; \
 	elif [ "$(shell uname)" = "Linux" ]; then \

@@ -1,5 +1,7 @@
 async function addStock() {
     const stockName = document.getElementById('stockName').value;
+    if (!stockName.trim()) return;  // 빈 입력 방지
+
     const response = await fetch('/add-stock', {
         method: 'POST',
         headers: {
@@ -17,6 +19,8 @@ async function addStock() {
 }
 
 async function removeStock(code) {
+    if (!confirm('정말 이 종목을 삭제하시겠습니까?')) return;
+
     try {
         const response = await fetch(`/remove-stock/${code}`, {
             method: 'POST'
@@ -24,10 +28,7 @@ async function removeStock(code) {
         
         const data = await response.json();
         if (data.success) {
-            const element = document.getElementById(`stock-${code}`);
-            if (element) {
-                element.remove();
-            }
+            document.getElementById(`stock-${code}`).remove();
         } else {
             alert(data.error || '종목 제거 중 오류가 발생했습니다.');
         }
@@ -35,4 +36,10 @@ async function removeStock(code) {
         console.error('Error:', error);
         alert('종목 제거 중 오류가 발생했습니다.');
     }
+}
+
+// 폼 제출 처리
+function handleSubmit(event) {
+    event.preventDefault();
+    addStock();
 } 

@@ -1,53 +1,144 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>{{ company_name }} 상세정보</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
+
 <body>
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div id="loading-message">데이터를 수집하고 있습니다...</div>
+        </div>
+    </div>
+
     <div class="detail-container">
         <div class="header">
-            <h1>{{ company_name }} ({{ stock_code }})</h1>
-            <a href="/manage" class="back-button">← 돌아가기</a>
-        </div>
-        
-        <div class="chart-container">
-            <div id="yearly_chart"></div>
-            <div id="quarter_chart"></div>
+            <div class="header-content">
+                <h1>{{ company_name }} <span class="stock-code">({{ stock_code }})</span></h1>
+                <a href="/manage" class="back-button">← 돌아가기</a>
+            </div>
         </div>
 
-        <div class="disclosure-list">
-            <h2>최근 공시</h2>
-            <div class="disclosure-items">
+        <div class="chart-section">
+            <div class="chart-card">
+                <h2>연간 실적 추이</h2>
+                <div id="yearly_chart" class="chart"></div>
+            </div>
+
+            <div class="chart-card">
+                <h2>분기별 실적 비교</h2>
+                <div id="quarter_chart" class="chart"></div>
+            </div>
+        </div>
+
+        <div class="disclosure-section">
+            <div class="section-header">
+                <h2>최근 공시</h2>
+            </div>
+            <div class="disclosure-list">
                 {% for disclosure in disclosures %}
                 <div class="disclosure-item">
-                    <span class="date">{{ disclosure.disclosure_date.strftime('%Y-%m-%d') }}</span>
-                    <a href="{{ disclosure.url }}" target="_blank" class="title">{{ disclosure.disclosure_title }}</a>
+                    <div class="disclosure-date">{{ disclosure.disclosure_date.strftime('%Y-%m-%d') }}</div>
+                    <a href="{{ disclosure.url }}" target="_blank" class="disclosure-title">
+                        {{ disclosure.disclosure_title }}
+                    </a>
+                    {% if disclosure.disclosure_type %}
+                    <span class="disclosure-type">{{ disclosure.disclosure_type }}</span>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
         </div>
     </div>
 
+    <script id="server-data" type="application/json">
+        {{ {
+            "collecting": collecting,
+            "yearlyData": yearly_data,
+            "quarterData": quarter_data
+        }|tojson|safe }}
+    </script>
+
     <script>
-        const yearlyData = JSON.parse('{{ yearly_data | tojson | safe }}');
-        const quarterData = JSON.parse('{{ quarter_data | tojson | safe }}');
-        
-        // 3개년 추이 그래프
-        Plotly.newPlot('yearly_chart', yearlyData.data, {
-            title: '최근 3개년 실적 추이',
+        const serverData = JSON.parse(document.getElementById('server-data').textContent);
+
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingMessage = document.getElementById('loading-message');
+        let statusCheckInterval = null;
+
+        // 데이터 수집 상태 확인
+        async function checkCollectionStatus() {
+            try {
+                const response = await fetch('/collection-status');
+                const data = await response.json();
+
+                if (data.status === 'collecting') {
+                    loadingOverlay.style.display = 'flex';
+                    loadingMessage.textContent = data.message || '데이터를 수집하고 있습니다...';
+                } else {
+                    loadingOverlay.style.display = 'none';
+                    if (data.status === 'idle') {
+                        // 상태 체크 중지
+                        if (statusCheckInterval) {
+                            clearInterval(statusCheckInterval);
+                            statusCheckInterval = null;
+                        }
+                        location.reload();  // 수집 완료 시 페이지 새로고침
+                    }
+                }
+            } catch (error) {
+                console.error('상태 확인 중 오류:', error);
+            }
+        }
+
+        // 페이지 로드 시 상태 확인 시작
+        if (serverData.collecting) {
+            loadingOverlay.style.display = 'flex';
+            statusCheckInterval = setInterval(checkCollectionStatus, 3000);
+        }
+
+        // 페이지 언로드 시 인터벌 정리
+        window.addEventListener('beforeunload', () => {
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+        });
+
+        const layout = {
+            font: { family: 'Arial, sans-serif' },
+            showlegend: true,
+            legend: { orientation: 'h', y: -0.2 },
+            margin: { t: 30, b: 50, l: 50, r: 20 },
             height: 400,
-            margin: { t: 50, b: 50, l: 50, r: 50 }
+            yaxis: {
+                tickformat: '.2s',
+                title: '금액 (원)'
+            }
+        };
+
+        // 3개년 추이 그래프
+        Plotly.newPlot('yearly_chart', serverData.yearlyData.data, {
+            ...layout,
+            title: { text: '최근 3개년 실적 추이', x: 0.05 }
         });
 
         // 분기 비교 그래프
-        Plotly.newPlot('quarter_chart', quarterData.data, {
-            title: '최근 분기 실적 비교',
-            height: 400,
-            margin: { t: 50, b: 50, l: 50, r: 50 },
-            barmode: 'group'
-        });
+        if (serverData.quarterData.data.length > 0) {
+            Plotly.newPlot('quarter_chart', serverData.quarterData.data, {
+                ...layout,
+                title: { text: '최근 분기 실적 비교', x: 0.05 },
+                barmode: 'group'
+            });
+        } else {
+            document.getElementById('quarter_chart').innerHTML =
+                '<div class="no-data">분기 데이터가 없습니다.</div>';
+        }
     </script>
 </body>
-</html> 
+
+</html>
