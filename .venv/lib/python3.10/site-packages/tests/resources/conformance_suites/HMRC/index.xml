@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<testcases name="HMRC">
+    <testcase uri='audited_abridged_LLP_accounts/testcase.xml' />
+    <testcase uri='audited_company_abridged_accounts/testcase.xml' />
+    <testcase uri='audited_medium_company/testcase.xml' />
+    <testcase uri='audited_medium_LLP/testcase.xml' />
+    <testcase uri='audited_micro_company/testcase.xml' />
+    <testcase uri='audited_micro_LLP/testcase.xml' />
+    <testcase uri='audited_other_charity/testcase.xml' />
+    <testcase uri='audited_other_company/testcase.xml' />
+    <testcase uri='audited_other_LLP/testcase.xml' />
+    <testcase uri='audited_small_charity/testcase.xml' />
+    <testcase uri='audited_small_company/testcase.xml' />
+    <testcase uri='audited_small_LLP/testcase.xml' />
+    <testcase uri='jfcvc/3312-testcase.xml' />
+    <testcase uri='jfcvc/3315-testcase.xml' />
+    <testcase uri='unaudited_charity_group_accounts/testcase.xml' />
+    <testcase uri='unaudited_company_abbreviated_accounts/testcase.xml' />
+    <testcase uri='unaudited_company_abridged_accounts/testcase.xml' />
+    <testcase uri='unaudited_company_group_accounts/testcase.xml' />
+    <testcase uri='unaudited_dormant_charity/testcase.xml' />
+    <testcase uri='unaudited_dormant_company/testcase.xml' />
+    <testcase uri='unaudited_dormant_llp/testcase.xml' />
+    <testcase uri='unaudited_llp_abbreviated_accounts/testcase.xml' />
+    <testcase uri='unaudited_llp_abridged_accounts/testcase.xml' />
+    <testcase uri='unaudited_llp_full_accounts/testcase.xml' />
+    <testcase uri='unaudited_llp_group_accounts/testcase.xml' />
+    <testcase uri='unaudited_micro_company/testcase.xml' />
+    <testcase uri='unaudited_micro_llp/testcase.xml' />
+    <testcase uri='unaudited_small_company_full_accounts/testcase.xml' />
+</testcases>
