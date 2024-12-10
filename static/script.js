@@ -17,14 +17,22 @@ async function addStock() {
 }
 
 async function removeStock(code) {
-    const response = await fetch(`/remove-stock/${code}`, {
-        method: 'POST'
-    });
-    
-    const data = await response.json();
-    if (data.success) {
-        document.getElementById(`stock-${code}`).remove();
-    } else {
-        alert(data.error);
+    try {
+        const response = await fetch(`/remove-stock/${code}`, {
+            method: 'POST'
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            const element = document.getElementById(`stock-${code}`);
+            if (element) {
+                element.remove();
+            }
+        } else {
+            alert(data.error || '종목 제거 중 오류가 발생했습니다.');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('종목 제거 중 오류가 발생했습니다.');
     }
 } 

@@ -1,16 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>로그인</title>
+    <title>DART 공시 관리 시스템</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
 <body>
-    <div class="container">
-        <h1>관리자 로그인</h1>
-        <form action="/login" method="post" class="login-form">
-            <input type="password" name="password" placeholder="비밀번호 입력">
-            <button type="submit">로그인</button>
-        </form>
+    <div class="login-container">
+        <div class="login-box">
+            <h1>Hello Again!</h1>
+            <p class="welcome-text">Welcome Back</p>
+            
+            <form action="/login" method="post" class="login-form">
+                <div class="input-group">
+                    <input type="password" name="password" placeholder="Password" required>
+                </div>
+                <button type="submit" class="login-button">Login</button>
+            </form>
+        </div>
     </div>
 </body>
 </html> 
