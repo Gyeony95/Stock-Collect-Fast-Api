@@ -5,7 +5,7 @@ venv:
 
 install:
 	pip install fastapi uvicorn dart-fss apscheduler python-dotenv jinja2 python-multipart itsdangerous \
-		sqlalchemy psycopg2-binary pandas streamlit plotly
+		sqlalchemy psycopg2-binary pandas plotly
 	@if [ "$(shell uname)" = "Darwin" ]; then \
 		brew install tmux; \
 	elif [ "$(shell uname)" = "Linux" ]; then \
@@ -16,8 +16,7 @@ activate:
 	. venv/bin/activate
 
 run:
-	uvicorn stock_collect:app --reload & \
-	streamlit run dashboard.py
+	uvicorn stock_collect:app --reload
 
 # Windows 사용자를 위한 명령어
 activate-win:

@@ -16,7 +16,7 @@
         <div class="stock-list">
             {% for code, name in stocks.items() %}
             <div class="stock-item" id="stock-{{ code }}">
-                <span>{{ name }} ({{ code }})</span>
+                <a href="/stock/{{ code }}" class="stock-link">{{ name }} ({{ code }})</a>
                 <button onclick="removeStock('{{ code }}')" class="remove-btn">X</button>
             </div>
             {% endfor %}

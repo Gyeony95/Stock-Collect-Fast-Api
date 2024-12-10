@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ company_name }} 상세정보</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="detail-container">
+        <div class="header">
+            <h1>{{ company_name }} ({{ stock_code }})</h1>
+            <a href="/manage" class="back-button">← 돌아가기</a>
+        </div>
+        
+        <div class="chart-container">
+            <div id="yearly_chart"></div>
+            <div id="quarter_chart"></div>
+        </div>
+
+        <div class="disclosure-list">
+            <h2>최근 공시</h2>
+            <div class="disclosure-items">
+                {% for disclosure in disclosures %}
+                <div class="disclosure-item">
+                    <span class="date">{{ disclosure.disclosure_date.strftime('%Y-%m-%d') }}</span>
+                    <a href="{{ disclosure.url }}" target="_blank" class="title">{{ disclosure.disclosure_title }}</a>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const yearlyData = JSON.parse('{{ yearly_data | tojson | safe }}');
+        const quarterData = JSON.parse('{{ quarter_data | tojson | safe }}');
+        
+        // 3개년 추이 그래프
+        Plotly.newPlot('yearly_chart', yearlyData.data, {
+            title: '최근 3개년 실적 추이',
+            height: 400,
+            margin: { t: 50, b: 50, l: 50, r: 50 }
+        });
+
+        // 분기 비교 그래프
+        Plotly.newPlot('quarter_chart', quarterData.data, {
+            title: '최근 분기 실적 비교',
+            height: 400,
+            margin: { t: 50, b: 50, l: 50, r: 50 },
+            barmode: 'group'
+        });
+    </script>
+</body>
+</html> 

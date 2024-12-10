@@ -177,4 +177,90 @@ body {
         background: #242424;
         color: white;
     }
+}
+
+.detail-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.back-button {
+    padding: 8px 16px;
+    background: var(--primary-color);
+    color: white;
+    text-decoration: none;
+    border-radius: 6px;
+}
+
+.chart-container {
+    display: grid;
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+.disclosure-list {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.disclosure-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.disclosure-item:last-child {
+    border-bottom: none;
+}
+
+.disclosure-item .date {
+    color: var(--text-secondary);
+    margin-right: 10px;
+}
+
+.disclosure-item .title {
+    color: var(--text-color);
+    text-decoration: none;
+}
+
+.disclosure-item .title:hover {
+    color: var(--primary-color);
+}
+
+.stock-link {
+    color: var(--text-color);
+    text-decoration: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+}
+
+.stock-link:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .detail-container {
+        padding: 10px;
+    }
+    
+    .header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+    
+    .chart-container {
+        gap: 15px;
+    }
 } 
