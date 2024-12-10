@@ -5,6 +5,13 @@
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
 </head>
 <body>
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <div id="loading-message">종목을 추가하고 있습니다...</div>
+        </div>
+    </div>
+
     <div class="container">
         <h1>종목 관리</h1>
         

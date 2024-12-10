@@ -70,7 +70,7 @@ async def manage_page(request: Request, _=Depends(verify_login)):
 
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
-    """로그인 처리"""
+    """로그�� 처리"""
     if password == PASSWORD:
         request.session["logged_in"] = True
         return RedirectResponse(url="/manage", status_code=303)
@@ -153,14 +153,17 @@ def collect_dart_data():
     """DART에서 데이터를 수집하는 함수"""
     try:
         dart.set_api_key(DART_API_KEY)
+        corp_list = dart.get_corp_list()
         current_time = datetime.now()
         logger.info(f"데이터 수집 시작: {current_time}")
         
         db = SessionLocal()
         try:
-            for stock_code, company_name in STOCK_CODES.items():
+            # 활성화된 종목 조회
+            stocks = db.query(ManagedStock).filter(ManagedStock.is_active == True).all()
+            for stock in stocks:
                 try:
-                    company = dart.get_corp_info(stock_code)
+                    company = corp_list.find_by_stock_code(stock.stock_code)
                     
                     # 공시 정보 수집
                     bgn_date = (datetime.now() - timedelta(days=7)).strftime('%Y%m%d')
@@ -175,8 +178,8 @@ def collect_dart_data():
                     # 공시 데이터 저장
                     for disclosure in disclosures:
                         db_disclosure = StockData(
-                            stock_code=stock_code,
-                            company_name=company_name,
+                            stock_code=stock.stock_code,
+                            company_name=stock.company_name,
                             disclosure_date=datetime.strptime(disclosure.date, '%Y-%m-%d'),
                             disclosure_title=disclosure.report_nm,
                             disclosure_type=disclosure.report_tp,
@@ -190,8 +193,8 @@ def collect_dart_data():
                         if fs:
                             for statement in fs:
                                 db_financial = FinancialData(
-                                    stock_code=stock_code,
-                                    company_name=company_name,
+                                    stock_code=stock.stock_code,
+                                    company_name=stock.company_name,
                                     date=statement['date'],
                                     revenue=statement.get('revenue', 0),
                                     operating_profit=statement.get('operating_profit', 0),
@@ -205,7 +208,7 @@ def collect_dart_data():
                     db.commit()
                     
                 except Exception as e:
-                    logger.error(f"종목 코드 {stock_code} 처리 중 오류 발생: {str(e)}")
+                    logger.error(f"종목 코드 {stock.stock_code} 처리 중 오류 발생: {str(e)}")
                     continue
                     
         finally:
@@ -237,6 +240,13 @@ async def logout(request: Request):
 
 def collect_single_stock_data(stock_code: str, company_name: str):
     """단일 종목의 데이터를 수집하는 함수"""
+    collected_data = {
+        "stock_code": stock_code,
+        "company_name": company_name,
+        "disclosures": [],
+        "financials": []
+    }
+    
     try:
         dart.set_api_key(DART_API_KEY)
         corp_list = dart.get_corp_list()
@@ -258,6 +268,14 @@ def collect_single_stock_data(stock_code: str, company_name: str):
             
             # 공시 데이터 저장
             for disclosure in disclosures:
+                disclosure_data = {
+                    "date": disclosure.rcept_dt,
+                    "title": disclosure.report_nm,
+                    "type": disclosure.rm,
+                    "url": f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={disclosure.rcp_no}"
+                }
+                collected_data["disclosures"].append(disclosure_data)
+                
                 db_disclosure = StockData(
                     stock_code=stock_code,
                     company_name=company_name,
@@ -272,7 +290,7 @@ def collect_single_stock_data(stock_code: str, company_name: str):
             try:
                 # 연결재무제표 시도
                 fs = company.extract_fs(bgn_de=(datetime.now() - timedelta(days=365*3)).strftime('%Y%m%d'))
-            except dart_fss.errors.NotFoundConsolidated:
+            except dart.errors.NotFoundConsolidated:
                 try:
                     # 일반재무제표 시도
                     fs = company.extract_fs(bgn_de=(datetime.now() - timedelta(days=365*3)).strftime('%Y%m%d'), separate=True)
@@ -282,18 +300,26 @@ def collect_single_stock_data(stock_code: str, company_name: str):
 
             if fs is not None:
                 try:
-                    statements = fs.show('재무상태표')  # 또는 다른 적절한 보고서 이름
+                    statements = fs.show('재무상태표')
                     if statements is not None:
                         for idx, row in statements.iterrows():
                             try:
                                 date = datetime.strptime(str(idx.year), '%Y')
+                                financial_data = {
+                                    "date": date.strftime('%Y-%m-%d'),
+                                    "revenue": float(row.get('매출액', 0)),
+                                    "operating_profit": float(row.get('영업이익', 0)),
+                                    "net_income": float(row.get('당기순이익', 0))
+                                }
+                                collected_data["financials"].append(financial_data)
+                                
                                 db_financial = FinancialData(
                                     stock_code=stock_code,
                                     company_name=company_name,
                                     date=date,
-                                    revenue=float(row.get('매출액', 0)),
-                                    operating_profit=float(row.get('영업이익', 0)),
-                                    net_income=float(row.get('당기순이익', 0))
+                                    revenue=financial_data["revenue"],
+                                    operating_profit=financial_data["operating_profit"],
+                                    net_income=financial_data["net_income"]
                                 )
                                 db.add(db_financial)
                             except (ValueError, TypeError) as e:
@@ -304,6 +330,10 @@ def collect_single_stock_data(stock_code: str, company_name: str):
             
             db.commit()
             logger.info(f"{company_name}({stock_code}) 데이터 수집 완료")
+            # 수집된 데이터 출력
+            import json
+            print("\n수집된 데이터:")
+            print(json.dumps(collected_data, indent=2, ensure_ascii=False))
             
         finally:
             db.close()
@@ -311,9 +341,13 @@ def collect_single_stock_data(stock_code: str, company_name: str):
     except Exception as e:
         logger.error(f"{company_name}({stock_code}) 데이터 수집 중 오류 발생: {str(e)}")
         raise e
+    finally:
+        collection_status["status"] = "idle"
+        collection_status["message"] = ""
+        collection_status["collecting_stocks"].discard(stock_code)
 
 # 전역 변수로 수집 상태 관리
-collection_status = {"status": "idle", "message": ""}
+collection_status = {"status": "idle", "message": "", "collecting_stocks": set()}
 
 @app.get("/collection-status")
 async def get_collection_status():
@@ -324,26 +358,37 @@ async def get_collection_status():
 async def stock_detail(request: Request, stock_code: str, background_tasks: BackgroundTasks, _=Depends(verify_login)):
     """종목 상세 정보 페이지"""
     try:
-        if stock_code not in STOCK_CODES:
-            raise HTTPException(status_code=404, detail="종목을 찾을 수 없습니다")
-            
-        company_name = STOCK_CODES[stock_code]
         db = SessionLocal()
-        collecting = False
-        
         try:
-            # 데이터 존재 여부 확인
-            data_exists = db.query(FinancialData).filter(
-                FinancialData.stock_code == stock_code
-            ).first()
+            # 활성화된 종목인지 확인
+            stock = db.query(ManagedStock)\
+                .filter(ManagedStock.stock_code == stock_code, ManagedStock.is_active == True)\
+                .first()
             
-            # 데이터가 없으면 수집 시작
-            if not data_exists:
+            if not stock:
+                raise HTTPException(status_code=404, detail="종목을 찾을 수 없습니다")
+            
+            company_name = stock.company_name
+            collecting = False
+            
+            # 데이터 존재 여부 확인 (재무제표 또는 공시 데이터)
+            data_exists = db.query(FinancialData)\
+                .filter(FinancialData.stock_code == stock_code)\
+                .first() is not None or \
+                db.query(StockData)\
+                .filter(StockData.stock_code == stock_code)\
+                .first() is not None
+            
+            # 데이터가 없고 현재 수집 중이 아닌 경우에만 수집 시작
+            if not data_exists and stock_code not in collection_status["collecting_stocks"]:
                 collecting = True
                 collection_status["status"] = "collecting"
                 collection_status["message"] = f"{company_name} 데이터를 수집하고 있습니다..."
+                collection_status["collecting_stocks"].add(stock_code)
                 # 백그라운드에서 데이터 수집 실행
                 background_tasks.add_task(collect_single_stock_data, stock_code, company_name)
+            elif stock_code in collection_status["collecting_stocks"]:
+                collecting = True
 
             # 최근 3개년 재무데이터 조회
             yearly_query = text("""
@@ -417,7 +462,7 @@ async def stock_detail(request: Request, stock_code: str, background_tasks: Back
                         'x': ['매출액', '영업이익', '순이익'],
                         'y': [quarter_data[0].revenue, quarter_data[0].operating_profit, quarter_data[0].net_income],
                         'type': 'bar',
-                        'name': '전년 ��기'
+                        'name': '전년 분기'
                     }
                 ]
             else:
