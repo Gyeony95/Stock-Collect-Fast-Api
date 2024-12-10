@@ -3,8 +3,19 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import dart_fss as dart
 import datetime
 import logging
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 시작 시
+    scheduler.start()
+    logger.info("스케줄러 시작됨")
+    yield
+    # 종료 시
+    scheduler.shutdown()
+    logger.info("스케줄러 종료됨")
+
+app = FastAPI(lifespan=lifespan)
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -63,18 +74,6 @@ def collect_dart_data():
 # 스케줄러 설정
 scheduler = BackgroundScheduler()
 scheduler.add_job(collect_dart_data, 'cron', hour=9, minute=0)  # 매일 오전 9시에 실행
-
-@app.on_event("startup")
-async def startup_event():
-    """애플리케이션 시작 시 스케줄러 시작"""
-    scheduler.start()
-    logger.info("스케줄러 시작됨")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """애플리케이션 종료 시 스케줄러 종료"""
-    scheduler.shutdown()
-    logger.info("스케줄러 종료됨")
 
 @app.get("/")
 async def root():
