@@ -4,7 +4,7 @@ venv:
 	python3 -m venv venv
 
 install:
-	pip install fastapi uvicorn dart-fss apscheduler python-dotenv
+	pip install fastapi uvicorn dart-fss apscheduler python-dotenv jinja2 python-multipart
 
 activate:
 	. venv/bin/activate

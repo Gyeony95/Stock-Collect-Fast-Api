@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 import dart_fss as dart
 import datetime
@@ -22,6 +25,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# 템플릿과 정적 파일 설정
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
+# 비밀번호 설정
+PASSWORD = os.getenv('ADMIN_PASSWORD')
+
+# 종목 관리를 위한 전역 변수
+STOCK_CODES = {
+    "005930": "삼성전자",
+    "000660": "SK하이닉스",
+    "035720": "카카오",
+}
+
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -31,13 +48,42 @@ DART_API_KEY = os.getenv('DART_API_KEY')
 if not DART_API_KEY:
     raise ValueError("DART_API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.")
 
-# 관심 있는 종목 코드 리스트
-STOCK_CODES = [
-    "005930",  # 삼성전자
-    "000660",  # SK하이닉스
-    "035720",  # 카카오
-    # 원하는 종목 코드를 추가하세요
-]
+@app.get("/manage")
+async def manage_page(request: Request):
+    """종목 관리 페이지"""
+    return templates.TemplateResponse(
+        "manage.html", 
+        {"request": request, "stocks": STOCK_CODES}
+    )
+
+@app.post("/login")
+async def login(password: str = Form(...)):
+    """로그인 처리"""
+    if password == PASSWORD:
+        return RedirectResponse(url="/manage", status_code=303)
+    raise HTTPException(status_code=401, detail="잘못된 비밀번호입니다")
+
+@app.post("/add-stock")
+async def add_stock(stock_name: str = Form(...)):
+    """종목 추가"""
+    try:
+        # dart-fss로 종목 검색
+        corps = dart.get_corp_list().find_by_corp_name(stock_name, exactly=False)
+        if corps:
+            corp = corps[0]  # 첫 번째 검색 결과 사용
+            STOCK_CODES[corp.stock_code] = corp.corp_name
+            return {"success": True, "code": corp.stock_code, "name": corp.corp_name}
+        return {"success": False, "error": "종목을 찾을 수 없습니다"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/remove-stock/{stock_code}")
+async def remove_stock(stock_code: str):
+    """종목 제거"""
+    if stock_code in STOCK_CODES:
+        del STOCK_CODES[stock_code]
+        return {"success": True}
+    return {"success": False, "error": "존재하지 않는 종목 코드입니다"}
 
 def collect_dart_data():
     """DART에서 데이터를 수집하는 함수"""

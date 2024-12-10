@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>종목 관리</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>종목 관리</h1>
+        
+        <div class="add-stock">
+            <input type="text" id="stockName" placeholder="종목명 입력">
+            <button onclick="addStock()">추가</button>
+        </div>
+
+        <div class="stock-list">
+            {% for code, name in stocks.items() %}
+            <div class="stock-item" id="stock-{{ code }}">
+                <span>{{ name }} ({{ code }})</span>
+                <button onclick="removeStock('{{ code }}')" class="remove-btn">X</button>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', path='/script.js') }}"></script>
+</body>
+</html> 
